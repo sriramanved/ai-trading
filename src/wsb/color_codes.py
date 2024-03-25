@@ -1,0 +1,9 @@
+"""
+A module containing ANSI escape codes for various colors
+"""
+TEAL_COLOR_CODE = '\033[36m'
+GREEN_COLOR_CODE = '\033[32m'
+RED_COLOR_CODE = '\033[31m'
+BOLD_HIGHLIGHTED_GREEN_COLOR_CODE = '\x1b[32;1;47m'
+BOLD_HIGHLIGHTED_RED_COLOR_CODE = '\x1b[31;1;47m'
+RESET_COLOR_CODE = '\x1b[0m'

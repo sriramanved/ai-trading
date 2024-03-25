@@ -1,3 +1,5 @@
 config.py
 StockBotServerKeyPair.pem
 __pycache__
+finrl-env/
+venv/
