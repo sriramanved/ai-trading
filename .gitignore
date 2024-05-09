@@ -3,3 +3,4 @@ StockBotServerKeyPair.pem
 __pycache__
 finrl-env/
 venv/
+src/rl/single/results/*
