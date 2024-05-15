@@ -33,6 +33,7 @@ class CustomPaperTradingAlpaca:
         turbulence_thresh=30,
         max_stock=1e2,
         latency=None,
+        hmax=100,
     ):
         # load agent
         self.drl_lib = drl_lib
@@ -54,11 +55,11 @@ class CustomPaperTradingAlpaca:
                     raise ValueError("Fail to load agent!")
 
             elif drl_lib == "stable_baselines3":
-                from stable_baselines3 import PPO
+                from stable_baselines3 import PPO, DDPG, SAC, TD3
 
                 try:
                     # load agent
-                    self.model = PPO.load(cwd)
+                    self.model = DDPG.load(cwd)
                     print("Successfully load model", cwd)
                 except:
                     raise ValueError("Fail to load agent!")
@@ -91,6 +92,7 @@ class CustomPaperTradingAlpaca:
         self.tech_indicator_list = tech_indicator_list
         self.turbulence_thresh = turbulence_thresh
         self.max_stock = max_stock
+        self.hmax = hmax
 
         # initialize account
         self.stocks = np.asarray([0] * len(ticker_list))  # stocks holding
@@ -151,7 +153,7 @@ class CustomPaperTradingAlpaca:
 
             action = self.model.predict(state, deterministic=True)
             print(action)
-            action = action[0]
+            action = action[0] * self.max_stock
             print("Predicted action: ", action)
             time.sleep(10)
 
@@ -253,32 +255,28 @@ class CustomPaperTradingAlpaca:
 
         stocks = np.asarray(stocks, dtype=float)
         cash = float(self.alpaca.get_account().cash)
+        cash = float(80)
         self.cash = cash
         self.stocks = stocks
         self.turbulence_bool = turbulence_bool
         self.price = price
         print("cash: ", cash)
-        amount = np.array(self.cash * (2**-12), dtype=np.float32)
-        scale = np.array(2**-6, dtype=np.float32)
-        # state is wrong dimension 14 here, 11 when trained
-        print("amount: ", self.cash)
         print("price: ", price)
         print("stocks: ", self.stocks)
         print("tech: ", tech)
+
         state = np.hstack(
             (
                 self.cash,
-                # turbulence,
-                # self.turbulence_bool,
-                price,
+                [800],
                 self.stocks,
-                # self.stocks_cd,
                 tech,
             )
         ).astype(np.float32)
+
         state[np.isnan(state)] = 0.0
         state[np.isinf(state)] = 0.0
-        # print(len(self.stockUniverse))
+        print("State shape: ", state.shape)  # Added for debugging
         return state
 
     def submitOrder(self, qty, stock, side, resp):

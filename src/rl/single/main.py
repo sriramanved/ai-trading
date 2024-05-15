@@ -11,7 +11,7 @@ ticker_list = (
 
 ticker_list = ["AAPL"]
 
-model_type = "ppo"
+model_type = "ddpg"
 
 drl_lib = "stable_baselines3"
 cwd = "./" + "trained_models/" + "agent_" + model_type + ".zip"

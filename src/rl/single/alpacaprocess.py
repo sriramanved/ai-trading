@@ -379,8 +379,8 @@ class AlpacaProcessor:
         #         "AAPL", TimeFrame.Hour, "2021-06-08", "2021-06-08", adjustment="raw"
         #     ).df
         # )
-        day = "2024-05-09"
-        days_ago = "2024-04-09"
+        day = "2024-05-14"
+        days_ago = "2024-04-14"
         print(day)
         for tic in ticker_list:
             barset = self.api.get_bars(
