@@ -98,6 +98,7 @@ class StockTradingEnv(gym.Env):
         #         self.logger = Logger('results',[CSVOutputFormat])
         # self.reset()
         self._seed()
+        self.returns = [] # Initialize the list to store returns
 
     def _sell_stock(self, index, action):
         def _do_sell_normal():
@@ -220,7 +221,6 @@ class StockTradingEnv(gym.Env):
     def step(self, actions):
         self.terminal = self.day >= len(self.df.index.unique()) - 1
         if self.terminal:
-            # print(f"Episode: {self.episode}")
             if self.make_plots:
                 self._make_plot()
             end_total_asset = self.state[0] + sum(
@@ -232,17 +232,13 @@ class StockTradingEnv(gym.Env):
                 self.state[0]
                 + sum(
                     np.array(self.state[1 : (self.stock_dim + 1)])
-                    * np.array(
-                        self.state[(self.stock_dim + 1) : (self.stock_dim * 2 + 1)]
-                    )
+                    * np.array(self.state[(self.stock_dim + 1) : (self.stock_dim * 2 + 1)])
                 )
                 - self.asset_memory[0]
             )  # initial_amount is only cash part of our initial asset
             df_total_value.columns = ["account_value"]
             df_total_value["date"] = self.date_memory
-            df_total_value["daily_return"] = df_total_value["account_value"].pct_change(
-                1
-            )
+            df_total_value["daily_return"] = df_total_value["account_value"].pct_change(1)
             if df_total_value["daily_return"].std() != 0:
                 sharpe = (
                     (252**0.5)
@@ -290,20 +286,13 @@ class StockTradingEnv(gym.Env):
                 )
                 plt.close()
 
-            # Add outputs to logger interface
-            # logger.record("environment/portfolio_value", end_total_asset)
-            # logger.record("environment/total_reward", tot_reward)
-            # logger.record("environment/total_reward_pct", (tot_reward / (end_total_asset - tot_reward)) * 100)
-            # logger.record("environment/total_cost", self.cost)
-            # logger.record("environment/total_trades", self.trades)
-
             return self.state, self.reward, self.terminal, False, {}
 
         else:
             actions = actions * self.hmax  # actions initially is scaled between 0 to 1
             actions = actions.astype(
                 int
-            )  # convert into integer because we can't by fraction of shares
+            )  # convert into integer because we can't buy fraction of shares
             if self.turbulence_threshold is not None:
                 if self.turbulence >= self.turbulence_threshold:
                     actions = np.array([-self.hmax] * self.stock_dim)
@@ -311,21 +300,15 @@ class StockTradingEnv(gym.Env):
                 np.array(self.state[1 : (self.stock_dim + 1)])
                 * np.array(self.state[(self.stock_dim + 1) : (self.stock_dim * 2 + 1)])
             )
-            # print("begin_total_asset:{}".format(begin_total_asset))
 
             argsort_actions = np.argsort(actions)
             sell_index = argsort_actions[: np.where(actions < 0)[0].shape[0]]
             buy_index = argsort_actions[::-1][: np.where(actions > 0)[0].shape[0]]
 
             for index in sell_index:
-                # print(f"Num shares before: {self.state[index+self.stock_dim+1]}")
-                # print(f'take sell action before : {actions[index]}')
                 actions[index] = self._sell_stock(index, actions[index]) * (-1)
-                # print(f'take sell action after : {actions[index]}')
-                # print(f"Num shares after: {self.state[index+self.stock_dim+1]}")
 
             for index in buy_index:
-                # print('take buy action: {}'.format(actions[index]))
                 actions[index] = self._buy_stock(index, actions[index])
 
             self.actions_memory.append(actions)
@@ -346,14 +329,29 @@ class StockTradingEnv(gym.Env):
             )
             self.asset_memory.append(end_total_asset)
             self.date_memory.append(self._get_date())
-            self.reward = end_total_asset - begin_total_asset
+
+            # Calculate daily returns
+            daily_return = np.log(self.data.close / self.data.close.shift(1))
+            self.returns.append(daily_return)
+
+            # Ensure the list only contains a fixed number of returns, e.g., 30 days
+            if len(self.returns) > 30:
+                self.returns.pop(0)
+
+            # Calculate Sortino ratio if enough data points are available
+            if len(self.returns) >= 30:
+                sortino_ratio = self.calculate_sortino_ratio(np.array(self.returns))
+            else:
+                sortino_ratio = 0  # or some default value
+
+            # Modify reward based on Sortino ratio
+            self.reward = (end_total_asset - begin_total_asset) * self.reward_scaling * sortino_ratio
+
             self.rewards_memory.append(self.reward)
-            self.reward = self.reward * self.reward_scaling
-            self.state_memory.append(
-                self.state
-            )  # add current state in state_recorder for each step
+            self.state_memory.append(self.state)
 
         return self.state, self.reward, self.terminal, False, {}
+
 
     def reset(
         self,
@@ -554,3 +552,17 @@ class StockTradingEnv(gym.Env):
         e = DummyVecEnv([lambda: self])
         obs = e.reset()
         return e, obs
+    
+    def calculate_sortino_ratio(returns, risk_free_rate=0):
+        # Calculate average return
+        average_return = np.mean(returns)
+        
+        # Calculate negative returns
+        negative_returns = returns[returns < 0]
+        
+        # Calculate downside deviation
+        downside_deviation = np.std(negative_returns)
+        
+        # Calculate Sortino Ratio
+        sortino_ratio = (average_return - risk_free_rate) / downside_deviation
+        return sortino_ratio
