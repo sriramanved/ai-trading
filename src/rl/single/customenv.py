@@ -98,11 +98,6 @@ class StockTradingEnv(gym.Env):
         #         self.logger = Logger('results',[CSVOutputFormat])
         # self.reset()
         self._seed()
-        print(self.df)
-        self.benchmark_initial_price = self.df["close"].tolist()
-        self.benchmark_shares = [
-            self.initial_amount // price for price in self.benchmark_initial_price
-        ]
 
     def _sell_stock(self, index, action):
         def _do_sell_normal():
@@ -232,9 +227,6 @@ class StockTradingEnv(gym.Env):
                 np.array(self.state[1 : (self.stock_dim + 1)])
                 * np.array(self.state[(self.stock_dim + 1) : (self.stock_dim * 2 + 1)])
             )
-            benchmark_end_total = (
-                self.benchmark_shares[self.day] * self.df["close"][self.day]
-            )
             df_total_value = pd.DataFrame(self.asset_memory)
             tot_reward = (
                 self.state[0]
@@ -265,9 +257,6 @@ class StockTradingEnv(gym.Env):
                 print(f"begin_total_asset: {self.asset_memory[0]:0.2f}")
                 print(f"end_total_asset: {end_total_asset:0.2f}")
                 print(f"total_reward: {tot_reward:0.2f}")
-                print(
-                    f"beating_benchmark: {end_total_asset - benchmark_end_total:0.2f}"
-                )
                 print(f"total_cost: {self.cost:0.2f}")
                 print(f"total_trades: {self.trades}")
                 if df_total_value["daily_return"].std() != 0:
@@ -315,11 +304,6 @@ class StockTradingEnv(gym.Env):
             actions = actions.astype(
                 int
             )  # convert into integer because we can't by fraction of shares
-
-            # compute how much we would have if we just put all money at the beginning
-            benchmark_end_total = (
-                self.benchmark_shares[self.day] * self.df["close"][self.day]
-            )
             if self.turbulence_threshold is not None:
                 if self.turbulence >= self.turbulence_threshold:
                     actions = np.array([-self.hmax] * self.stock_dim)
@@ -362,9 +346,7 @@ class StockTradingEnv(gym.Env):
             )
             self.asset_memory.append(end_total_asset)
             self.date_memory.append(self._get_date())
-            # More reward if we beat the benchmark
-
-            self.reward = end_total_asset - benchmark_end_total
+            self.reward = end_total_asset - begin_total_asset
             self.rewards_memory.append(self.reward)
             self.reward = self.reward * self.reward_scaling
             self.state_memory.append(
