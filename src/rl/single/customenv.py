@@ -7,18 +7,17 @@ import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+import requests
 from gymnasium import spaces
 from gymnasium.utils import seeding
 from stable_baselines3.common.vec_env import DummyVecEnv
+from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
 
 matplotlib.use("Agg")
 
-# testing 
+# testing
 add_reward_bonus = True
 add_sortino_ratio = True
-
-# from stable_baselines3.common.logger import Logger, KVWriter, CSVOutputFormat
-
 
 class StockTradingEnv(gym.Env):
     """A stock trading environment for OpenAI gym"""
@@ -48,6 +47,7 @@ class StockTradingEnv(gym.Env):
         model_name="",
         mode="",
         iteration="",
+        news_api_key="e1805af768d440f588817bc1a52a02d3",
     ):
         self.day = day
         self.df = df
@@ -61,7 +61,8 @@ class StockTradingEnv(gym.Env):
         self.state_space = state_space
         self.action_space = action_space
         self.tech_indicator_list = tech_indicator_list
-        self.action_space = spaces.Box(low=-1, high=1, shape=(self.action_space,))
+        self.action_space = spaces.Box(
+            low=-1, high=1, shape=(self.action_space,))
         self.observation_space = spaces.Box(
             low=-np.inf, high=np.inf, shape=(self.state_space,)
         )
@@ -76,6 +77,9 @@ class StockTradingEnv(gym.Env):
         self.model_name = model_name
         self.mode = mode
         self.iteration = iteration
+        self.news_api_key = news_api_key
+        self.analyzer = SentimentIntensityAnalyzer()
+        
         # initalize state
         self.state = self._initiate_state()
 
@@ -90,7 +94,7 @@ class StockTradingEnv(gym.Env):
             self.initial_amount
             + np.sum(
                 np.array(self.num_stock_shares)
-                * np.array(self.state[1 : 1 + self.stock_dim])
+                * np.array(self.state[1: 1 + self.stock_dim])
             )
         ]  # the initial total asset is calculated by cash + sum (num_share_stock_i * price_stock_i)
         self.rewards_memory = []
@@ -103,7 +107,8 @@ class StockTradingEnv(gym.Env):
         # self.reset()
         self._seed()
         self.returns = []  # Initialize the list to store returns
-        self.stocks_cd = np.zeros(self.stock_dim)  # Initialize stocks_cd for each stock
+        # Initialize stocks_cd for each stock
+        self.stocks_cd = np.zeros(self.stock_dim)
 
     def _sell_stock(self, index, action):
         def _do_sell_normal():
@@ -141,7 +146,8 @@ class StockTradingEnv(gym.Env):
             if self.turbulence >= self.turbulence_threshold:
                 if self.state[index + 1] > 0:
                     if self.state[index + self.stock_dim + 1] > 0:
-                        sell_num_shares = self.state[index + self.stock_dim + 1]
+                        sell_num_shares = self.state[index +
+                                                     self.stock_dim + 1]
                         sell_amount = (
                             self.state[index + 1]
                             * sell_num_shares
@@ -183,7 +189,8 @@ class StockTradingEnv(gym.Env):
                 self.state[0] -= buy_amount
                 self.state[index + self.stock_dim + 1] += buy_num_shares
                 self.cost += (
-                    self.state[index + 1] * buy_num_shares * self.buy_cost_pct[index]
+                    self.state[index + 1] * buy_num_shares *
+                    self.buy_cost_pct[index]
                 )
                 self.trades += 1
             else:
@@ -215,21 +222,22 @@ class StockTradingEnv(gym.Env):
             if self.make_plots:
                 self._make_plot()
             end_total_asset = self.state[0] + sum(
-                np.array(self.state[1 : (self.stock_dim + 1)])
-                * np.array(self.state[(self.stock_dim + 1) : (self.stock_dim * 2 + 1)])
+                np.array(self.state[1: (self.stock_dim + 1)])
+                * np.array(self.state[(self.stock_dim + 1): (self.stock_dim * 2 + 1)])
             )
             df_total_value = pd.DataFrame(self.asset_memory)
             tot_reward = (
                 self.state[0]
                 + sum(
-                    np.array(self.state[1 : (self.stock_dim + 1)])
-                    * np.array(self.state[(self.stock_dim + 1) : (self.stock_dim * 2 + 1)])
+                    np.array(self.state[1: (self.stock_dim + 1)])
+                    * np.array(self.state[(self.stock_dim + 1): (self.stock_dim * 2 + 1)])
                 )
                 - self.asset_memory[0]
             )  # initial_amount is only cash part of our initial asset
             df_total_value.columns = ["account_value"]
             df_total_value["date"] = self.date_memory
-            df_total_value["daily_return"] = df_total_value["account_value"].pct_change(1)
+            df_total_value["daily_return"] = df_total_value["account_value"].pct_change(
+                1)
             if df_total_value["daily_return"].std() != 0:
                 sharpe = (
                     (252**0.5)
@@ -288,13 +296,14 @@ class StockTradingEnv(gym.Env):
                 if self.turbulence >= self.turbulence_threshold:
                     actions = np.array([-self.hmax] * self.stock_dim)
             begin_total_asset = self.state[0] + sum(
-                np.array(self.state[1 : (self.stock_dim + 1)])
-                * np.array(self.state[(self.stock_dim + 1) : (self.stock_dim * 2 + 1)])
+                np.array(self.state[1: (self.stock_dim + 1)])
+                * np.array(self.state[(self.stock_dim + 1): (self.stock_dim * 2 + 1)])
             )
 
             argsort_actions = np.argsort(actions)
             sell_index = argsort_actions[: np.where(actions < 0)[0].shape[0]]
-            buy_index = argsort_actions[::-1][: np.where(actions > 0)[0].shape[0]]
+            buy_index = argsort_actions[::-
+                                        1][: np.where(actions > 0)[0].shape[0]]
 
             for index in sell_index:
                 actions[index] = self._sell_stock(index, actions[index]) * (-1)
@@ -316,8 +325,8 @@ class StockTradingEnv(gym.Env):
             self.state = self._update_state()
 
             end_total_asset = self.state[0] + sum(
-                np.array(self.state[1 : (self.stock_dim + 1)])
-                * np.array(self.state[(self.stock_dim + 1) : (self.stock_dim * 2 + 1)])
+                np.array(self.state[1: (self.stock_dim + 1)])
+                * np.array(self.state[(self.stock_dim + 1): (self.stock_dim * 2 + 1)])
             )
             self.asset_memory.append(end_total_asset)
             self.date_memory.append(self._get_date())
@@ -332,19 +341,24 @@ class StockTradingEnv(gym.Env):
 
             # Calculate Sortino ratio if enough data points are available
             if len(self.returns) >= 30:
-                sortino_ratio = self.calculate_sortino_ratio(np.array(self.returns))
+                sortino_ratio = self.calculate_sortino_ratio(
+                    np.array(self.returns))
             else:
                 sortino_ratio = 0  # or some default value
 
             # Calculate reward bonus based on stocks_cd
-            reward_bonus = np.sum([self.calculate_reward_bonus(cd) for cd in self.stocks_cd])
+            reward_bonus = np.sum([self.calculate_reward_bonus(cd)
+                                  for cd in self.stocks_cd])
 
-            # Modify reward based on Sortino ratio and reward bonus
-            # add indicator for the reward bonus
+            # Calculate sentiment bonus
+            sentiment_bonus = self.calculate_sentiment_bonus()
+
+            # Modify reward based on Sortino ratio, reward bonus, and sentiment bonus
             self.reward = (
-                (end_total_asset - begin_total_asset) * (sortino_ratio if add_sortino_ratio else 1) + (reward_bonus if add_reward_bonus else 0)
-                ) * self.reward_scaling
-
+                (end_total_asset - begin_total_asset) * (sortino_ratio if add_sortino_ratio else 1) +
+                (reward_bonus if add_reward_bonus else 0) +
+                sentiment_bonus
+            ) * self.reward_scaling
 
             self.rewards_memory.append(self.reward)
             self.state_memory.append(self.state)
@@ -370,14 +384,15 @@ class StockTradingEnv(gym.Env):
                 self.initial_amount
                 + np.sum(
                     np.array(self.num_stock_shares)
-                    * np.array(self.state[1 : 1 + self.stock_dim])
+                    * np.array(self.state[1: 1 + self.stock_dim])
                 )
             ]
         else:
             previous_total_asset = self.previous_state[0] + sum(
-                np.array(self.state[1 : (self.stock_dim + 1)])
+                np.array(self.state[1: (self.stock_dim + 1)])
                 * np.array(
-                    self.previous_state[(self.stock_dim + 1) : (self.stock_dim * 2 + 1)]
+                    self.previous_state[(self.stock_dim + 1)
+                                         : (self.stock_dim * 2 + 1)]
                 )
             )
             self.asset_memory = [previous_total_asset]
@@ -420,7 +435,8 @@ class StockTradingEnv(gym.Env):
                     [self.initial_amount]
                     + [self.data.close]
                     + [0] * self.stock_dim
-                    + sum(([self.data[tech]] for tech in self.tech_indicator_list), [])
+                    + sum(([self.data[tech]]
+                          for tech in self.tech_indicator_list), [])
                 )
         else:
             # Using Previous State
@@ -430,7 +446,7 @@ class StockTradingEnv(gym.Env):
                     [self.previous_state[0]]
                     + self.data.close.values.tolist()
                     + self.previous_state[
-                        (self.stock_dim + 1) : (self.stock_dim * 2 + 1)
+                        (self.stock_dim + 1): (self.stock_dim * 2 + 1)
                     ]
                     + sum(
                         (
@@ -446,9 +462,10 @@ class StockTradingEnv(gym.Env):
                     [self.previous_state[0]]
                     + [self.data.close]
                     + self.previous_state[
-                        (self.stock_dim + 1) : (self.stock_dim * 2 + 1)
+                        (self.stock_dim + 1): (self.stock_dim * 2 + 1)
                     ]
-                    + sum(([self.data[tech]] for tech in self.tech_indicator_list), [])
+                    + sum(([self.data[tech]]
+                          for tech in self.tech_indicator_list), [])
                 )
         return state
 
@@ -458,7 +475,8 @@ class StockTradingEnv(gym.Env):
             state = (
                 [self.state[0]]
                 + self.data.close.values.tolist()
-                + list(self.state[(self.stock_dim + 1) : (self.stock_dim * 2 + 1)])
+                + list(self.state[(self.stock_dim + 1)
+                       : (self.stock_dim * 2 + 1)])
                 + sum(
                     (
                         self.data[tech].values.tolist()
@@ -472,8 +490,10 @@ class StockTradingEnv(gym.Env):
             state = (
                 [self.state[0]]
                 + [self.data.close]
-                + list(self.state[(self.stock_dim + 1) : (self.stock_dim * 2 + 1)])
-                + sum(([self.data[tech]] for tech in self.tech_indicator_list), [])
+                + list(self.state[(self.stock_dim + 1)
+                       : (self.stock_dim * 2 + 1)])
+                + sum(([self.data[tech]]
+                      for tech in self.tech_indicator_list), [])
             )
 
         return state
@@ -534,7 +554,8 @@ class StockTradingEnv(gym.Env):
         else:
             date_list = self.date_memory[:-1]
             action_list = self.actions_memory
-            df_actions = pd.DataFrame({"date": date_list, "actions": action_list})
+            df_actions = pd.DataFrame(
+                {"date": date_list, "actions": action_list})
         return df_actions
 
     def _seed(self, seed=None):
@@ -545,17 +566,17 @@ class StockTradingEnv(gym.Env):
         e = DummyVecEnv([lambda: self])
         obs = e.reset()
         return e, obs
-    
+
     def calculate_sortino_ratio(self, returns, risk_free_rate=0):
         # Calculate average return
         average_return = np.mean(returns)
-        
+
         # Calculate negative returns
         negative_returns = returns[returns < 0]
-        
+
         # Calculate downside deviation
         downside_deviation = np.std(negative_returns)
-        
+
         # Calculate Sortino Ratio
         sortino_ratio = (average_return - risk_free_rate) / downside_deviation
         return sortino_ratio
