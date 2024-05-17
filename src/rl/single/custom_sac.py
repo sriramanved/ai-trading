@@ -6,7 +6,8 @@ from gymnasium import spaces
 from torch.nn import functional as F
 from torch.optim.lr_scheduler import ExponentialLR
 
-from custom_buffers import ReplayBuffer, PrioritizedReplayBuffer
+from stable_baselines3.common.buffers import ReplayBuffer
+from prioritized_replay_buffer import PrioritizedReplayBuffer
 from stable_baselines3.common.noise import ActionNoise
 from stable_baselines3.common.off_policy_algorithm import OffPolicyAlgorithm
 from stable_baselines3.common.policies import BasePolicy, ContinuousCritic
@@ -79,18 +80,18 @@ class SAC(OffPolicyAlgorithm):
             train_freq,
             gradient_steps,
             action_noise,
-            replay_buffer_class,
-            replay_buffer_kwargs,
-            policy_kwargs,
-            stats_window_size,
-            tensorboard_log,
-            verbose,
-            device,
-            seed,
-            use_sde,
-            sde_sample_freq,
-            use_sde_at_warmup,
-            optimize_memory_usage,
+            replay_buffer_class=replay_buffer_class,
+            replay_buffer_kwargs=replay_buffer_kwargs,
+            policy_kwargs=policy_kwargs,
+            stats_window_size=stats_window_size,
+            tensorboard_log=tensorboard_log,
+            verbose=verbose,
+            device=device,
+            seed=seed,
+            use_sde=use_sde,
+            sde_sample_freq=sde_sample_freq,
+            use_sde_at_warmup=use_sde_at_warmup,
+            optimize_memory_usage=optimize_memory_usage,
             supported_action_spaces=(spaces.Box,),
             support_multi_env=True,
         )
@@ -143,7 +144,7 @@ class SAC(OffPolicyAlgorithm):
         actor_losses, critic_losses = [], []
 
         for step in range(gradient_steps):
-            replay_data = self.replay_buffer.sample(batch_size, beta=self.beta, env=self._vec_normalize_env)  # type: ignore[union-attr]
+            replay_data = self.replay_buffer.sample(batch_size, beta=self.beta, env=self._vec_normalize_env)
 
             if self.use_sde:
                 self.actor.reset_noise()
@@ -175,8 +176,8 @@ class SAC(OffPolicyAlgorithm):
                 target_q_values = replay_data.rewards + (1 - replay_data.dones) * self.gamma * next_q_values
 
             current_q_values = self.critic(replay_data.observations, replay_data.actions)
-            critic_loss = 0.5 * sum(F.mse_loss(current_q, target_q_values) for current_q in current_q_values)
-            critic_losses.append(critic_loss.item())  # type: ignore[union-attr]
+            critic_loss = 0.5 * sum(F.mse_loss(current_q, target_q_values) * replay_data.weights for current_q in current_q_values).mean()
+            critic_losses.append(critic_loss.item())
 
             self.critic.optimizer.zero_grad()
             critic_loss.backward()
@@ -199,7 +200,7 @@ class SAC(OffPolicyAlgorithm):
                 polyak_update(self.batch_norm_stats, self.batch_norm_stats_target, 1.0)
 
             # Update priorities in the prioritized replay buffer
-            new_priorities = critic_loss.detach().cpu().numpy() + 1e-5  # Adding a small value to avoid zero priority
+            new_priorities = (critic_loss.detach().cpu().numpy() + 1e-5) * replay_data.weights.cpu().numpy()
             self.replay_buffer.update_priorities(replay_data.indices, new_priorities)
 
         self._n_updates += gradient_steps
