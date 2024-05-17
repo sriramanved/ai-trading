@@ -1,7 +1,6 @@
 from typing import Any, Dict, Optional, Tuple, Type, TypeVar, Union
-
 import torch as th
-
+from prioritized_replay_buffer import PrioritizedReplayBuffer
 from stable_baselines3.common.buffers import ReplayBuffer
 from stable_baselines3.common.noise import ActionNoise
 from stable_baselines3.common.type_aliases import GymEnv, MaybeCallback, Schedule
@@ -66,7 +65,7 @@ class DDPG(TD3):
         train_freq: Union[int, Tuple[int, str]] = (1, "episode"),
         gradient_steps: int = -1,
         action_noise: Optional[ActionNoise] = None,
-        replay_buffer_class: Optional[Type[ReplayBuffer]] = None,
+        replay_buffer_class: Optional[Type[ReplayBuffer]] = PrioritizedReplayBuffer,
         replay_buffer_kwargs: Optional[Dict[str, Any]] = None,
         optimize_memory_usage: bool = False,
         tensorboard_log: Optional[str] = None,
@@ -75,8 +74,12 @@ class DDPG(TD3):
         seed: Optional[int] = None,
         device: Union[th.device, str] = "auto",
         _init_setup_model: bool = True,
+        alpha: float = 0.6,
+        beta: float = 0.4,
     ):
         super().__init__(
+            alpha=alpha,
+            beta=beta,
             policy=policy,
             env=env,
             learning_rate=learning_rate,
