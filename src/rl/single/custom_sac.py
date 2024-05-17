@@ -6,7 +6,7 @@ from gymnasium import spaces
 from torch.nn import functional as F
 from torch.optim.lr_scheduler import ExponentialLR
 
-from stable_baselines3.common.buffers import ReplayBuffer
+from custom_buffers import ReplayBuffer, PrioritizedReplayBuffer
 from stable_baselines3.common.noise import ActionNoise
 from stable_baselines3.common.off_policy_algorithm import OffPolicyAlgorithm
 from stable_baselines3.common.policies import BasePolicy, ContinuousCritic
@@ -46,7 +46,7 @@ class SAC(OffPolicyAlgorithm):
         train_freq: Union[int, Tuple[int, str]] = 1,
         gradient_steps: int = 1,
         action_noise: Optional[ActionNoise] = None,
-        replay_buffer_class: Optional[Type[ReplayBuffer]] = None,
+        replay_buffer_class: Optional[Type[ReplayBuffer]] = PrioritizedReplayBuffer,
         replay_buffer_kwargs: Optional[Dict[str, Any]] = None,
         optimize_memory_usage: bool = False,
         ent_coef: Union[str, float] = "auto",
@@ -62,7 +62,11 @@ class SAC(OffPolicyAlgorithm):
         seed: Optional[int] = None,
         device: Union[th.device, str] = "auto",
         _init_setup_model: bool = True,
+        alpha: float = 0.6,
+        beta: float = 0.4,
     ):
+        self.alpha = alpha
+        self.beta = beta
         super().__init__(
             policy,
             env,
@@ -75,18 +79,18 @@ class SAC(OffPolicyAlgorithm):
             train_freq,
             gradient_steps,
             action_noise,
-            replay_buffer_class=replay_buffer_class,
-            replay_buffer_kwargs=replay_buffer_kwargs,
-            policy_kwargs=policy_kwargs,
-            stats_window_size=stats_window_size,
-            tensorboard_log=tensorboard_log,
-            verbose=verbose,
-            device=device,
-            seed=seed,
-            use_sde=use_sde,
-            sde_sample_freq=sde_sample_freq,
-            use_sde_at_warmup=use_sde_at_warmup,
-            optimize_memory_usage=optimize_memory_usage,
+            replay_buffer_class,
+            replay_buffer_kwargs,
+            policy_kwargs,
+            stats_window_size,
+            tensorboard_log,
+            verbose,
+            device,
+            seed,
+            use_sde,
+            sde_sample_freq,
+            use_sde_at_warmup,
+            optimize_memory_usage,
             supported_action_spaces=(spaces.Box,),
             support_multi_env=True,
         )
@@ -139,7 +143,7 @@ class SAC(OffPolicyAlgorithm):
         actor_losses, critic_losses = [], []
 
         for step in range(gradient_steps):
-            replay_data = self.replay_buffer.sample(batch_size, env=self._vec_normalize_env)  # type: ignore[union-attr]
+            replay_data = self.replay_buffer.sample(batch_size, beta=self.beta, env=self._vec_normalize_env)  # type: ignore[union-attr]
 
             if self.use_sde:
                 self.actor.reset_noise()
@@ -194,6 +198,10 @@ class SAC(OffPolicyAlgorithm):
                 polyak_update(self.critic.parameters(), self.critic_target.parameters(), self.tau)
                 polyak_update(self.batch_norm_stats, self.batch_norm_stats_target, 1.0)
 
+            # Update priorities in the prioritized replay buffer
+            new_priorities = critic_loss.detach().cpu().numpy() + 1e-5  # Adding a small value to avoid zero priority
+            self.replay_buffer.update_priorities(replay_data.indices, new_priorities)
+
         self._n_updates += gradient_steps
 
         self.logger.record("train/n_updates", self._n_updates, exclude="tensorboard")
@@ -204,22 +212,22 @@ class SAC(OffPolicyAlgorithm):
             self.logger.record("train/ent_coef_loss", np.mean(ent_coef_losses))
 
     def learn(
-      self: SelfSAC,
-      total_timesteps: int,
-      callback: MaybeCallback = None,
-      log_interval: int = 4,
-      tb_log_name: str = "SAC",
-      reset_num_timesteps: bool = True,
-      progress_bar: bool = False,
-  ) -> SelfSAC:
-      return super().learn(
-          total_timesteps=total_timesteps,
-          callback=callback,
-          log_interval=log_interval,
-          tb_log_name=tb_log_name,
-          reset_num_timesteps=reset_num_timesteps,
-          progress_bar=progress_bar,
-      )
+        self: SelfSAC,
+        total_timesteps: int,
+        callback: MaybeCallback = None,
+        log_interval: int = 4,
+        tb_log_name: str = "SAC",
+        reset_num_timesteps: bool = True,
+        progress_bar: bool = False,
+    ) -> SelfSAC:
+        return super().learn(
+            total_timesteps=total_timesteps,
+            callback=callback,
+            log_interval=log_interval,
+            tb_log_name=tb_log_name,
+            reset_num_timesteps=reset_num_timesteps,
+            progress_bar=progress_bar,
+        )
 
     def _excluded_save_params(self) -> List[str]:
         return super()._excluded_save_params() + ["actor", "critic", "critic_target"]
