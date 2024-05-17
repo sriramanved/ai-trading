@@ -8,7 +8,7 @@ import pandas as pd
 from custom_a2c import A2C
 from custom_ddpg import DDPG
 from custom_ppo import PPO
-from stable_baselines3 import SAC
+from custom_sac import SAC
 from custom_td3 import TD3
 from stable_baselines3.common.callbacks import BaseCallback
 from stable_baselines3.common.noise import NormalActionNoise
@@ -146,7 +146,7 @@ class DRLAgent:
             ):  # more descriptive condition for early termination to clarify the logic
                 account_memory = test_env.env_method(method_name="save_asset_memory")
                 actions_memory = test_env.env_method(method_name="save_action_memory")
-                print("actions memory", actions_memory)
+                # print("actions memory", actions_memory)
             # add current state to state memory
             # state_memory=test_env.env_method(method_name="save_state_memory")
 

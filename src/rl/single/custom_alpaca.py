@@ -268,7 +268,7 @@ class CustomPaperTradingAlpaca:
         state = np.hstack(
             (
                 self.cash,
-                [800],
+                [self.price],
                 self.stocks,
                 tech,
             )

@@ -5,7 +5,7 @@ import torch as th
 from gymnasium import spaces
 from torch.nn import functional as F
 from torch.optim.lr_scheduler import ExponentialLR
-from stable_baselines3.common.buffers import PrioritizedReplayBuffer
+# from stable_baselines3.deepq.replay_buffer import PrioritizedReplayBuffer
 
 from stable_baselines3.common.buffers import ReplayBuffer
 from stable_baselines3.common.noise import ActionNoise
@@ -134,21 +134,22 @@ class TD3(OffPolicyAlgorithm):
         self.policy_delay = policy_delay
         self.target_noise_clip = target_noise_clip
         self.target_policy_noise = target_policy_noise
-        
+
+        # # Use prioritized replay buffer if not specified
+        # if replay_buffer_class is None:
+        #     self.replay_buffer = ReplayBuffer(buffer_size, **replay_buffer_kwargs)
+
+        if True:
+            self._setup_model()
+            # print("here")
+
         # Use Adam optimizer with appropriate settings
-        self.actor.optimizer = th.optim.Adam(self.actor.parameters(), lr=learning_rate, eps=1e-8)
-        self.critic.optimizer = th.optim.Adam(self.critic.parameters(), lr=learning_rate, eps=1e-8)
-        
+        self.actor.optimizer = th.optim.Adam(self.actor.parameters(), eps=1e-8)
+        self.critic.optimizer = th.optim.Adam(self.critic.parameters(), eps=1e-8)
+
         # Initialize learning rate scheduler
         self.actor_scheduler = ExponentialLR(self.actor.optimizer, gamma=0.99)
         self.critic_scheduler = ExponentialLR(self.critic.optimizer, gamma=0.99)
-
-        # Use prioritized replay buffer if not specified
-        if replay_buffer_class is None:
-            self.replay_buffer = PrioritizedReplayBuffer(buffer_size, **replay_buffer_kwargs)
-
-        if _init_setup_model:
-            self._setup_model()
 
     def _setup_model(self) -> None:
         super()._setup_model()
@@ -167,13 +168,13 @@ class TD3(OffPolicyAlgorithm):
 
     def train(self, gradient_steps: int, batch_size: int = 100, accumulate_gradients: int = 1) -> None:
         self.policy.set_training_mode(True)
-        
+
         # Update learning rate according to lr schedule
         self.actor_scheduler.step()
         self.critic_scheduler.step()
-        
+
         actor_losses, critic_losses = [], []
-        for _ in range(gradient_steps):
+        for step in range(gradient_steps):
             self._n_updates += 1
             replay_data = self.replay_buffer.sample(batch_size, env=self._vec_normalize_env)
             with th.no_grad():
@@ -183,7 +184,7 @@ class TD3(OffPolicyAlgorithm):
                 next_q_values = th.cat(self.critic_target(replay_data.next_observations, next_actions), dim=1)
                 next_q_values, _ = th.min(next_q_values, dim=1, keepdim=True)
                 target_q_values = replay_data.rewards + (1 - replay_data.dones) * self.gamma * next_q_values
-            
+
             current_q_values = self.critic(replay_data.observations, replay_data.actions)
             critic_loss = sum(F.mse_loss(current_q, target_q_values) for current_q in current_q_values)
             critic_losses.append(critic_loss.item())
@@ -191,7 +192,7 @@ class TD3(OffPolicyAlgorithm):
             # Optimize the critics
             self.critic.optimizer.zero_grad()
             critic_loss.backward()
-            if (_ + 1) % accumulate_gradients == 0:
+            if (step + 1) % accumulate_gradients == 0:
                 self.critic.optimizer.step()
                 self.critic.optimizer.zero_grad()
 

@@ -123,7 +123,7 @@ class A2C(OnPolicyAlgorithm):
         # Update optimizer inside the policy if we want to use Adam
         if "optimizer_class" not in self.policy_kwargs:
             self.policy_kwargs["optimizer_class"] = th.optim.Adam
-            self.policy_kwargs["optimizer_kwargs"] = {'lr': learning_rate, 'eps': 1e-8}
+            self.policy_kwargs["optimizer_kwargs"] = {'eps': 1e-8}
 
         if _init_setup_model:
             self._setup_model()

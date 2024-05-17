@@ -82,7 +82,7 @@ class PPO(OnPolicyAlgorithm):
         )
 
         # Initialize learning rate scheduler
-        self.lr_scheduler = ExponentialLR(self.policy.optimizer, gamma=0.99)
+
         self.batch_size = batch_size
         self.n_epochs = n_epochs
         self.clip_range = clip_range
@@ -111,6 +111,8 @@ class PPO(OnPolicyAlgorithm):
         if _init_setup_model:
             self._setup_model()
 
+        self.lr_scheduler = ExponentialLR(self.policy.optimizer, gamma=0.99)
+
     def _setup_model(self) -> None:
         super()._setup_model()
         self.clip_range = get_schedule_fn(self.clip_range)
@@ -118,7 +120,6 @@ class PPO(OnPolicyAlgorithm):
             if isinstance(self.clip_range_vf, (float, int)):
                 assert self.clip_range_vf > 0, "`clip_range_vf` must be positive, " "pass `None` to deactivate vf clipping"
             self.clip_range_vf = get_schedule_fn(self.clip_range_vf)
-       
 
     def train(self) -> None:
         """
