@@ -141,7 +141,6 @@ class TD3(OffPolicyAlgorithm):
 
         if True:
             self._setup_model()
-            # print("here")
 
         # Use Adam optimizer with appropriate settings
         self.actor.optimizer = th.optim.Adam(self.actor.parameters(), eps=1e-8)
@@ -169,10 +168,6 @@ class TD3(OffPolicyAlgorithm):
     def train(self, gradient_steps: int, batch_size: int = 100, accumulate_gradients: int = 1) -> None:
         self.policy.set_training_mode(True)
 
-        # Update learning rate according to lr schedule
-        self.actor_scheduler.step()
-        self.critic_scheduler.step()
-
         actor_losses, critic_losses = [], []
         for step in range(gradient_steps):
             self._n_updates += 1
@@ -194,15 +189,20 @@ class TD3(OffPolicyAlgorithm):
             critic_loss.backward()
             if (step + 1) % accumulate_gradients == 0:
                 self.critic.optimizer.step()
+                self.critic_scheduler.step()  # Update learning rate after optimizer step
                 self.critic.optimizer.zero_grad()
 
+            # Delayed policy updates
             if self._n_updates % self.policy_delay == 0:
+                # Compute actor loss
                 actor_loss = -self.critic.q1_forward(replay_data.observations, self.actor(replay_data.observations)).mean()
                 actor_losses.append(actor_loss.item())
 
+                # Optimize the actor
                 self.actor.optimizer.zero_grad()
                 actor_loss.backward()
                 self.actor.optimizer.step()
+                self.actor_scheduler.step()  # Update learning rate after optimizer step
 
                 polyak_update(self.critic.parameters(), self.critic_target.parameters(), self.tau)
                 polyak_update(self.actor.parameters(), self.actor_target.parameters(), self.tau)
@@ -213,6 +213,7 @@ class TD3(OffPolicyAlgorithm):
         if len(actor_losses) > 0:
             self.logger.record("train/actor_loss", np.mean(actor_losses))
         self.logger.record("train/critic_loss", np.mean(critic_losses))
+
 
     def learn(
         self: SelfTD3,

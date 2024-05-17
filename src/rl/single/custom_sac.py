@@ -135,11 +135,6 @@ class SAC(OffPolicyAlgorithm):
     def train(self, gradient_steps: int, batch_size: int = 64, accumulate_gradients: int = 1) -> None:
         self.policy.set_training_mode(True)
 
-        self.actor_scheduler.step()
-        self.critic_scheduler.step()
-        if self.ent_coef_optimizer:
-            self.ent_coef_scheduler.step()
-
         ent_coef_losses, ent_coefs = [], []
         actor_losses, critic_losses = [], []
 
@@ -166,6 +161,7 @@ class SAC(OffPolicyAlgorithm):
                 self.ent_coef_optimizer.zero_grad()
                 ent_coef_loss.backward()
                 self.ent_coef_optimizer.step()
+                self.ent_coef_scheduler.step()
 
             with th.no_grad():
                 next_actions, next_log_prob = self.actor.action_log_prob(replay_data.next_observations)
@@ -182,6 +178,7 @@ class SAC(OffPolicyAlgorithm):
             critic_loss.backward()
             if (step + 1) % accumulate_gradients == 0:
                 self.critic.optimizer.step()
+                self.critic_scheduler.step()
 
             q_values_pi = th.cat(self.critic(replay_data.observations, actions_pi), dim=1)
             min_qf_pi, _ = th.min(q_values_pi, dim=1, keepdim=True)
@@ -191,6 +188,7 @@ class SAC(OffPolicyAlgorithm):
             self.actor.optimizer.zero_grad()
             actor_loss.backward()
             self.actor.optimizer.step()
+            self.actor_scheduler.step()
 
             if step % self.target_update_interval == 0:
                 polyak_update(self.critic.parameters(), self.critic_target.parameters(), self.tau)

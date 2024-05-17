@@ -139,9 +139,6 @@ class A2C(OnPolicyAlgorithm):
         # Switch to train mode (this affects batch norm / dropout)
         self.policy.set_training_mode(True)
 
-        # Update optimizer learning rate
-        self.scheduler.step()
-
         # This will only loop once (get all data in one go)
         for rollout_data in self.rollout_buffer.get(batch_size=None):
             actions = rollout_data.actions
@@ -179,6 +176,7 @@ class A2C(OnPolicyAlgorithm):
             # Clip grad norm
             th.nn.utils.clip_grad_norm_(self.policy.parameters(), self.max_grad_norm)
             self.policy.optimizer.step()
+            self.scheduler.step()
 
         explained_var = explained_variance(self.rollout_buffer.values.flatten(), self.rollout_buffer.returns.flatten())
 
