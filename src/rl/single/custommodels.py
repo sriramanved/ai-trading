@@ -5,11 +5,11 @@ import time
 
 import numpy as np
 import pandas as pd
-from stable_baselines3 import A2C
-from stable_baselines3 import DDPG
-from stable_baselines3 import PPO
+from custom_a2c import A2C
+from custom_ddpg import DDPG
+from custom_ppo import PPO
 from stable_baselines3 import SAC
-from stable_baselines3 import TD3
+from custom_td3 import TD3
 from stable_baselines3.common.callbacks import BaseCallback
 from stable_baselines3.common.noise import NormalActionNoise
 from stable_baselines3.common.noise import OrnsteinUhlenbeckActionNoise
@@ -27,7 +27,6 @@ NOISE = {
     "normal": NormalActionNoise,
     "ornstein_uhlenbeck": OrnsteinUhlenbeckActionNoise,
 }
-
 
 class TensorboardCallback(BaseCallback):
     """
