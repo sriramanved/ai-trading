@@ -20,6 +20,7 @@ def main():
     # Lists to store dates and total values for plotting
     dates = []
     total_values = []
+    sp500_values = []
 
     print(f'Initial cash balance: ${initial_cash:.2f}')
 
@@ -67,15 +68,22 @@ def main():
         # Append data for plotting
         dates.append(current_date)
         total_values.append(total_value)
+        sp500_value = sp.stock_catalog['^GSPC']['Close'].loc[:current_date].iloc[-1]
+        sp500_values.append(sp500_value)
 
         current_date += timedelta(days=1)
+
+    # Normalize S&P 500 values to the initial portfolio value
+    sp500_initial_value = sp500_values[0]
+    sp500_values = [value / sp500_initial_value * initial_cash for value in sp500_values]
 
     # Plotting the results
     plt.figure(figsize=(10, 5))
     plt.plot(dates, total_values, label='Total Portfolio Value')
+    plt.plot(dates, sp500_values, label='S&P 500 Performance')
     plt.xlabel('Date')
     plt.ylabel('Total Value ($)')
-    plt.title('Portfolio Value Over Time')
+    plt.title('Portfolio Value vs. S&P 500 Performance')
     plt.legend()
     plt.grid(True)
     plt.tight_layout()
