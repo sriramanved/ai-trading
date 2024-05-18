@@ -12,6 +12,7 @@ stock_catalog = {}
 
 # Define the list of specific stock tickers to analyze
 snp500_stock_tickers = pd.read_html('https://en.wikipedia.org/wiki/List_of_S%26P_500_companies')[0].loc[:, 'Symbol'].tolist()
+snp500_stock_tickers.append('^GSPC')
 
 # Download all selected stocks at once
 print(f'{color_codes.TEAL_COLOR_CODE}[  Downloading stock data and calculating technical analysis indicators for selected stocks...  ]{color_codes.RESET_COLOR_CODE}')
