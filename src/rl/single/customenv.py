@@ -10,15 +10,15 @@ import pandas as pd
 from gymnasium import spaces
 from gymnasium.utils import seeding
 from stable_baselines3.common.vec_env import DummyVecEnv
+from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
+import requests
 
 matplotlib.use("Agg")
 
 # testing
 add_reward_bonus = True
 add_sortino_ratio = True
-
-# from stable_baselines3.common.logger import Logger, KVWriter, CSVOutputFormat
-
+add_sentiment_bonus = True
 
 class StockTradingEnv(gym.Env):
     """A stock trading environment for OpenAI gym"""
@@ -104,6 +104,8 @@ class StockTradingEnv(gym.Env):
         self._seed()
         self.returns = []  # Initialize the list to store returns
         self.stocks_cd = np.zeros(self.stock_dim)  # Initialize stocks_cd for each stock
+        self.news_api_key = 'e1805af768d440f588817bc1a52a02d3'
+        self.analyzer = SentimentIntensityAnalyzer()
 
     def _sell_stock(self, index, action):
         def _do_sell_normal():
@@ -206,8 +208,29 @@ class StockTradingEnv(gym.Env):
         plt.savefig(f"results/account_value_trade_{self.episode}.png")
         plt.close()
 
-    def calculate_reward_bonus(self, stock_cd, A=5, B=1, C=1e17):
+    def calculate_reward_bonus(self, stock_cd, A=1, B=1, C=1e17):
         return (A / (B + C * np.exp(-stock_cd)))
+    
+    def fetch_news_sentiment(self, ticker: str) -> float:
+        url = f"https://newsapi.org/v2/everything?q={ticker}&apiKey={self.news_api_key}"
+        response = requests.get(url)
+        if response.status_code == 200:
+            articles = response.json().get("articles", [])
+            sentiment_score = 0
+            for article in articles:
+                title = article.get("title")
+                if title:
+                    sentiment = self.analyzer.polarity_scores(title)
+                    sentiment_score += sentiment["compound"]
+            return sentiment_score / len(articles) if articles else 0
+        else:
+            return 0
+    
+    def calculate_sentiment_bonus(self) -> float:
+        sentiment_bonus = 0
+        for ticker in self.data.tic.unique():
+            sentiment_bonus += self.fetch_news_sentiment(ticker)
+        return sentiment_bonus
 
     def step(self, actions):
         self.terminal = self.day >= len(self.df.index.unique()) - 1
@@ -341,10 +364,13 @@ class StockTradingEnv(gym.Env):
             # Calculate reward bonus based on stocks_cd
             reward_bonus = np.sum([self.calculate_reward_bonus(cd) for cd in self.stocks_cd])
 
-            # Modify reward based on Sortino ratio and reward bonus
+            # Calculate sentiment bonus
+            sentiment_bonus = self.calculate_sentiment_bonus()
+
+            # Modify reward based on Sortino ratio, reward bonus, and Sentiment bonus
             # add indicator for the reward bonus
             self.reward = (
-                (end_total_asset - begin_total_asset) * (sortino_ratio if add_sortino_ratio else 1) + (reward_bonus if add_reward_bonus else 0)
+                ((end_total_asset - begin_total_asset) * (sortino_ratio) + (end_total_asset / 2) * ((reward_bonus if add_reward_bonus else 0) + (sentiment_bonus if add_sentiment_bonus else 0)))
                 ) * self.reward_scaling
 
             self.rewards_memory.append(self.reward)
