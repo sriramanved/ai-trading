@@ -50,6 +50,8 @@ class PPO(OnPolicyAlgorithm):
         seed: Optional[int] = None,
         device: Union[th.device, str] = "auto",
         _init_setup_model: bool = True,
+        lr_scheduler: Optional[Type[th.optim.lr_scheduler._LRScheduler]] = ExponentialLR,
+        lr_scheduler_kwargs: Optional[Dict[str, Any]] = {"gamma": 0.99},
         accumulate_gradients: int = 1,
     ):
         super().__init__(
@@ -82,21 +84,24 @@ class PPO(OnPolicyAlgorithm):
         )
 
         # Initialize learning rate scheduler
+        self.lr_scheduler = lr_scheduler
+        self.lr_scheduler_kwargs = lr_scheduler_kwargs if lr_scheduler_kwargs is not None else {}
 
-        self.batch_size = batch_size
-        self.n_epochs = n_epochs
-        self.clip_range = clip_range
-        self.clip_range_vf = clip_range_vf
-        self.normalize_advantage = normalize_advantage
-        self.target_kl = target_kl
-        self.accumulate_gradients = accumulate_gradients
+        # Sanity check, otherwise it will lead to noisy gradient and NaN
+        # because of the advantage normalization
+        if normalize_advantage:
+            assert (
+                batch_size > 1
+            ), "`batch_size` must be greater than 1. See https://github.com/DLR-RM/stable-baselines3/issues/440"
 
         if self.env is not None:
-            self.n_envs = self.env.num_envs
+            # Check that `n_steps * n_envs > 1` to avoid NaN
+            # when doing advantage normalization
             buffer_size = self.env.num_envs * self.n_steps
             assert buffer_size > 1 or (
                 not normalize_advantage
             ), f"`n_steps * n_envs` must be greater than 1. Currently n_steps={self.n_steps} and n_envs={self.env.num_envs}"
+            # Check that the rollout buffer size is a multiple of the mini-batch size
             untruncated_batches = buffer_size // batch_size
             if buffer_size % batch_size > 0:
                 warnings.warn(
@@ -107,18 +112,25 @@ class PPO(OnPolicyAlgorithm):
                     f"We recommend using a `batch_size` that is a factor of `n_steps * n_envs`.\n"
                     f"Info: (n_steps={self.n_steps} and n_envs={self.env.num_envs})"
                 )
+        self.batch_size = batch_size
+        self.n_epochs = n_epochs
+        self.clip_range = clip_range
+        self.clip_range_vf = clip_range_vf
+        self.normalize_advantage = normalize_advantage
+        self.target_kl = target_kl
 
         if _init_setup_model:
             self._setup_model()
 
-        self.lr_scheduler = ExponentialLR(self.policy.optimizer, gamma=0.99)
-
     def _setup_model(self) -> None:
         super()._setup_model()
+
+        # Initialize schedules for policy/value clipping
         self.clip_range = get_schedule_fn(self.clip_range)
         if self.clip_range_vf is not None:
             if isinstance(self.clip_range_vf, (float, int)):
                 assert self.clip_range_vf > 0, "`clip_range_vf` must be positive, " "pass `None` to deactivate vf clipping"
+
             self.clip_range_vf = get_schedule_fn(self.clip_range_vf)
 
     def train(self) -> None:
@@ -140,7 +152,7 @@ class PPO(OnPolicyAlgorithm):
         clip_fractions = []
 
         continue_training = True
-        # Train for n_epochs epochs
+        # train for n_epochs epochs
         for epoch in range(self.n_epochs):
             approx_kl_divs = []
             # Do a complete pass on the rollout buffer
@@ -162,10 +174,10 @@ class PPO(OnPolicyAlgorithm):
                 if self.normalize_advantage and len(advantages) > 1:
                     advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-8)
 
-                # Ratio between old and new policy, should be one at the first iteration
+                # ratio between old and new policy, should be one at the first iteration
                 ratio = th.exp(log_prob - rollout_data.old_log_prob)
 
-                # Clipped surrogate loss
+                # clipped surrogate loss
                 policy_loss_1 = advantages * ratio
                 policy_loss_2 = advantages * th.clamp(ratio, 1 - clip_range, 1 + clip_range)
                 policy_loss = -th.min(policy_loss_1, policy_loss_2).mean()
@@ -214,19 +226,19 @@ class PPO(OnPolicyAlgorithm):
                         print(f"Early stopping at step {epoch} due to reaching max kl: {approx_kl_div:.2f}")
                     break
 
-                # Optimization step with gradient accumulation
+                # Optimization step
                 self.policy.optimizer.zero_grad()
                 loss.backward()
-                if (epoch + 1) % self.accumulate_gradients == 0:
-                    # Clip grad norm
-                    th.nn.utils.clip_grad_norm_(self.policy.parameters(), self.max_grad_norm)
-                    self.policy.optimizer.step()
+                # Clip grad norm
+                th.nn.utils.clip_grad_norm_(self.policy.parameters(), self.max_grad_norm)
+                self.policy.optimizer.step()
 
             self._n_updates += 1
             if not continue_training:
                 break
 
         explained_var = explained_variance(self.rollout_buffer.values.flatten(), self.rollout_buffer.returns.flatten())
+
         # Logs
         self.logger.record("train/entropy_loss", np.mean(entropy_losses))
         self.logger.record("train/policy_gradient_loss", np.mean(pg_losses))
@@ -237,6 +249,7 @@ class PPO(OnPolicyAlgorithm):
         self.logger.record("train/explained_variance", explained_var)
         if hasattr(self.policy, "log_std"):
             self.logger.record("train/std", th.exp(self.policy.log_std).mean().item())
+
         self.logger.record("train/n_updates", self._n_updates, exclude="tensorboard")
         self.logger.record("train/clip_range", clip_range)
         if self.clip_range_vf is not None:

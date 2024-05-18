@@ -55,6 +55,8 @@ class A2C(OnPolicyAlgorithm):
     :param device: Device (cpu, cuda, ...) on which the code should be run.
         Setting it to auto, the code will be run on the GPU if possible.
     :param _init_setup_model: Whether or not to build the network at the creation of the instance
+    :param lr_scheduler: The learning rate scheduler class to use
+    :param lr_scheduler_kwargs: Additional keyword arguments to pass to the learning rate scheduler
     """
 
     policy_aliases: ClassVar[Dict[str, Type[BasePolicy]]] = {
@@ -88,6 +90,8 @@ class A2C(OnPolicyAlgorithm):
         seed: Optional[int] = None,
         device: Union[th.device, str] = "auto",
         _init_setup_model: bool = True,
+        lr_scheduler: Optional[Type[th.optim.lr_scheduler._LRScheduler]] = ExponentialLR,
+        lr_scheduler_kwargs: Optional[Dict[str, Any]] = {"gamma" : 0.99},
     ):
         super().__init__(
             policy,
@@ -119,6 +123,8 @@ class A2C(OnPolicyAlgorithm):
         )
 
         self.normalize_advantage = normalize_advantage
+        self.lr_scheduler = lr_scheduler
+        self.lr_scheduler_kwargs = lr_scheduler_kwargs if lr_scheduler_kwargs is not None else {}
 
         # Update optimizer inside the policy if we want to use Adam
         if "optimizer_class" not in self.policy_kwargs:
@@ -128,9 +134,6 @@ class A2C(OnPolicyAlgorithm):
         if _init_setup_model:
             self._setup_model()
 
-        # Set up the learning rate scheduler
-        self.scheduler = ExponentialLR(self.policy.optimizer, gamma=0.99)
-
     def train(self) -> None:
         """
         Update policy using the currently gathered
@@ -138,6 +141,9 @@ class A2C(OnPolicyAlgorithm):
         """
         # Switch to train mode (this affects batch norm / dropout)
         self.policy.set_training_mode(True)
+
+        # Update optimizer learning rate
+        self._update_learning_rate(self.policy.optimizer)
 
         # This will only loop once (get all data in one go)
         for rollout_data in self.rollout_buffer.get(batch_size=None):
@@ -149,7 +155,7 @@ class A2C(OnPolicyAlgorithm):
             values, log_prob, entropy = self.policy.evaluate_actions(rollout_data.observations, actions)
             values = values.flatten()
 
-            # Normalize advantage
+            # Normalize advantage (not present in the original implementation)
             advantages = rollout_data.advantages
             if self.normalize_advantage:
                 advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-8)
@@ -176,7 +182,6 @@ class A2C(OnPolicyAlgorithm):
             # Clip grad norm
             th.nn.utils.clip_grad_norm_(self.policy.parameters(), self.max_grad_norm)
             self.policy.optimizer.step()
-            self.scheduler.step()
 
         explained_var = explained_variance(self.rollout_buffer.values.flatten(), self.rollout_buffer.returns.flatten())
 

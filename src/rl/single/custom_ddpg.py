@@ -6,6 +6,7 @@ from stable_baselines3.common.noise import ActionNoise
 from stable_baselines3.common.type_aliases import GymEnv, MaybeCallback, Schedule
 from stable_baselines3.td3.policies import TD3Policy
 from custom_td3 import TD3
+from torch.optim.lr_scheduler import ExponentialLR
 
 SelfDDPG = TypeVar("SelfDDPG", bound="DDPG")
 
@@ -76,7 +77,11 @@ class DDPG(TD3):
         _init_setup_model: bool = True,
         alpha: float = 0.6,
         beta: float = 0.4,
+        lr_scheduler: Optional[Type[th.optim.lr_scheduler._LRScheduler]] = ExponentialLR,
+        lr_scheduler_kwargs: Optional[Dict[str, Any]] = {"gamma": 0.99},
     ):
+        self.lr_scheduler = lr_scheduler
+        self.lr_scheduler_kwargs = lr_scheduler_kwargs if lr_scheduler_kwargs is not None else {}
         super().__init__(
             alpha=alpha,
             beta=beta,
