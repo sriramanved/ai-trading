@@ -207,6 +207,7 @@ class AlpacaProcessor:
         for indicator in tech_indicator_list:
             indicator_dfs = []
             for tic in unique_ticker:
+                print(f"Processing {indicator} for {tic}")
                 tic_data = stock[stock.tic == tic]
                 # print(tic_data)
                 indicator_series = tic_data[indicator]
@@ -369,6 +370,12 @@ class AlpacaProcessor:
             trading_days.append(str(day)[:10])
 
         return trading_days
+    
+    def get_last_tradeable_day(self):
+        nyse = tc.get_calendar("NYSE")
+        today = pd.Timestamp.now().tz_localize("America/New_York").isoformat()
+        last_trading_day = nyse.previous_close(today).isoformat()
+        return last_trading_day
 
     def fetch_latest_data(
         self, ticker_list, time_interval, tech_indicator_list, limit=100
@@ -379,10 +386,13 @@ class AlpacaProcessor:
         #         "AAPL", TimeFrame.Hour, "2021-06-08", "2021-06-08", adjustment="raw"
         #     ).df
         # )
-        day = "2024-05-14"
-        days_ago = "2024-04-14"
-        print(day)
+        last_trading_day_from_today = self.get_last_tradeable_day()
+        day = last_trading_day_from_today
+
+        thirty_days_ago = pd.Timestamp(day) - pd.Timedelta(days=30)
+        days_ago = thirty_days_ago.isoformat()
         for tic in ticker_list:
+            print("Fetching data for ", tic)
             barset = self.api.get_bars(
                 [tic], TimeFrame.Day, days_ago, day, limit=limit
             ).df  # [tic]
@@ -390,6 +400,8 @@ class AlpacaProcessor:
             barset["tic"] = tic
             barset = barset.reset_index()
             data_df = pd.concat([data_df, barset])
+
+        print("Data fetched")
 
         data_df = data_df.reset_index(drop=True)
         # print("keys: ", data_df)
@@ -404,6 +416,7 @@ class AlpacaProcessor:
 
         df = data_df.copy()
         new_df = pd.DataFrame()
+        print("Cleaning data")
         for tic in ticker_list:
             tmp_df = pd.DataFrame(
                 columns=["open", "high", "low", "close", "volume"], index=times
@@ -439,7 +452,7 @@ class AlpacaProcessor:
                         0.0,
                         0.0,
                     ]
-
+            print("Handling NaN values for", tic)
             for i in range(tmp_df.shape[0]):
                 if str(tmp_df.iloc[i]["close"]) == "nan":
                     previous_close = tmp_df.iloc[i - 1]["close"]
@@ -458,10 +471,13 @@ class AlpacaProcessor:
 
         new_df = new_df.reset_index()
         new_df = new_df.rename(columns={"index": "timestamp"})
+        print("Data cleaned")
+        print("Adding technical indicators")
         # print(new_df)
         df = self.add_technical_indicator(new_df, tech_indicator_list)
+        print("Added technical indicators")
         df["VIXY"] = 0
-        print(df)
+        # print(df)
 
         price_array, tech_array, turbulence_array = self.df_to_array(
             df, tech_indicator_list, if_vix=True

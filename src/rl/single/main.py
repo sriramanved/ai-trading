@@ -11,10 +11,18 @@ ticker_list = (
 
 ticker_list = ["AAPL"]
 
-model_type = "ddpg"
+# load train_data.csv and get unique tickers
+train = pd.read_csv("train_data.csv")
+train = train.set_index(train.columns[0])
+train.index.names = [""]
+stock_dimension = len(train.tic.unique())
+
+ticker_list = train["tic"].unique().tolist()
+
+model_type = "ppo"
 
 drl_lib = "stable_baselines3"
-cwd = "./" + "trained_models/" + "agent_" + model_type + ".zip"
+cwd = "./" + "trained_models/" + "agent_" + model_type 
 
 agent = "ppo"
 

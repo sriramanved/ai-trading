@@ -37,40 +37,53 @@ class CustomPaperTradingAlpaca:
     ):
         # load agent
         self.drl_lib = drl_lib
-        if agent == "ppo":
-            if drl_lib == "elegantrl":
-                agent_class = AgentPPO
-                agent = agent_class(net_dim, state_dim, action_dim)
-                actor = agent.act
-                # load agent
-                try:
-                    cwd = cwd + "/actor.pth"
-                    print(f"| load actor from: {cwd}")
-                    actor.load_state_dict(
-                        torch.load(cwd, map_location=lambda storage, loc: storage)
-                    )
-                    self.act = actor
-                    self.device = agent.device
-                except BaseException:
-                    raise ValueError("Fail to load agent!")
-
-            elif drl_lib == "stable_baselines3":
-                from stable_baselines3 import PPO, DDPG, SAC, TD3
-
-                try:
-                    # load agent
-                    self.model = DDPG.load(cwd)
-                    print("Successfully load model", cwd)
-                except:
-                    raise ValueError("Fail to load agent!")
-
-            else:
-                raise ValueError(
-                    "The DRL library input is NOT supported yet. Please check your input."
+        
+        if drl_lib == "elegantrl":
+            agent_class = AgentPPO
+            agent = agent_class(net_dim, state_dim, action_dim)
+            actor = agent.act
+            # load agent
+            try:
+                cwd = cwd + "/actor.pth"
+                print(f"| load actor from: {cwd}")
+                actor.load_state_dict(
+                    torch.load(cwd, map_location=lambda storage, loc: storage)
                 )
+                self.act = actor
+                self.device = agent.device
+            except BaseException:
+                raise ValueError("Fail to load agent!")
+
+        elif drl_lib == "stable_baselines3":
+            from stable_baselines3 import PPO, DDPG, SAC, TD3, A2C
+            try:
+                if agent == "ppo":
+                    self.model = PPO.load(cwd)
+                elif agent == "ddpg":
+                    self.model = DDPG.load(cwd)
+                elif agent == "sac":
+                    self.model = SAC.load(cwd)
+                elif agent == "td3":
+                    self.model = TD3.load(cwd)
+                elif agent == "a2c":
+                    self.model = A2C.load(cwd)
+                else:
+                    raise ValueError("The agent input is NOT supported yet. Please check your input.")
+            except:
+                raise ValueError("Fail to load agent!")
+            
+
+            # try:
+            #     # load agent
+            #     self.model = DDPG.load(cwd)
+            #     print("Successfully load model", cwd)
+            # except:
+            #     raise ValueError("Fail to load agent!")
 
         else:
-            raise ValueError("Agent input is NOT supported yet.")
+            raise ValueError(
+                "The DRL library input is NOT supported yet. Please check your input."
+            )
 
         # connect to Alpaca trading API
         try:
@@ -137,8 +150,9 @@ class CustomPaperTradingAlpaca:
         isOpen = self.alpaca.get_clock().is_open
 
     def trade(self):
-        print("getting state")
+        print("Getting State")
         state = self.get_state()
+        print("Got State")
         # print("Current state: ", state)
         # time.sleep(10)
 
@@ -164,7 +178,7 @@ class CustomPaperTradingAlpaca:
 
         self.stocks_cd += 1
         if self.turbulence_bool == 0:
-            print("here")
+            print("Trading on normal mode")
             min_action = 0  # stock_cd
             threads = []
             for index in np.where(action < -min_action)[0]:  # sell_index:
@@ -268,7 +282,7 @@ class CustomPaperTradingAlpaca:
         state = np.hstack(
             (
                 self.cash,
-                [self.price],
+                self.price,
                 self.stocks,
                 tech,
             )

@@ -1,5 +1,6 @@
 import optuna
-from stable_baselines3 import DDPG
+# from stable_baselines3 import DDPG
+from custom_td3 import TD3
 from stable_baselines3.common.noise import NormalActionNoise
 import numpy as np
 from stable_baselines3.common.evaluation import evaluate_policy
@@ -10,7 +11,8 @@ from finrl.meta.env_stock_trading.env_stocktrading import StockTradingEnv
 
 # from customenv import StockTradingEnv
 # from finrl.env.env_stocktrading import StockTradingEnv
-from finrl.agents.stablebaselines3.models import DRLAgent
+# from finrl.agents.stablebaselines3.models import DRLAgent
+from custommodels import DRLAgent
 from stable_baselines3.common.logger import configure
 from finrl import config_tickers
 from finrl.main import check_and_make_directories
@@ -21,7 +23,7 @@ from stable_baselines3.common.noise import NormalActionNoise
 
 check_and_make_directories([TRAINED_MODEL_DIR])
 
-train = pd.read_csv("train_data_single.csv")
+train = pd.read_csv("train_data.csv")
 
 # If you are not using the data generated from part 1 of this tutorial, make sure
 # it has the columns and index in the form that could be make into the environment.
@@ -64,7 +66,7 @@ def objective(trial):
         mean=np.zeros(action_space), sigma=0.1 * np.ones(action_space)
     )
 
-    model_ddpg = DDPG(
+    model_ddpg = TD3(
         "MlpPolicy",
         e_train_gym,
         action_noise=action_noise,
@@ -79,7 +81,7 @@ def objective(trial):
     )
     env_kwargs = {
         "hmax": 100,
-        "initial_amount": 100000,
+        "initial_amount": 10000,
         "num_stock_shares": num_stock_shares,
         "buy_cost_pct": buy_cost_list,
         "sell_cost_pct": sell_cost_list,
@@ -87,9 +89,9 @@ def objective(trial):
         "stock_dim": stock_dimension,
         "tech_indicator_list": INDICATORS,
         "action_space": stock_dimension,
-        "reward_scaling": 1e-3,
+        "reward_scaling": 1e-4,
     }
-    trade = pd.read_csv("trade_data_single.csv")
+    trade = pd.read_csv("trade_data.csv")
     trade = trade.set_index(trade.columns[0])
     trade.index.names = ['']        
     
@@ -105,7 +107,7 @@ def objective(trial):
 
 
 study = optuna.create_study(direction="maximize")
-study.optimize(objective, n_trials=100)
+study.optimize(objective, n_trials=20)
 best_params = study.best_params
 
 print(best_params)

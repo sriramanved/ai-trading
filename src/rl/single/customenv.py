@@ -18,7 +18,7 @@ matplotlib.use("Agg")
 # testing
 add_reward_bonus = True
 add_sortino_ratio = True
-add_sentiment_bonus = True
+add_sentiment_bonus = False
 
 class StockTradingEnv(gym.Env):
     """A stock trading environment for OpenAI gym"""
@@ -227,9 +227,14 @@ class StockTradingEnv(gym.Env):
             return 0
     
     def calculate_sentiment_bonus(self) -> float:
+        if not add_sentiment_bonus:
+            return 0
         sentiment_bonus = 0
-        for ticker in self.data.tic.unique():
-            sentiment_bonus += self.fetch_news_sentiment(ticker)
+        if len(self.df.tic.unique()) > 1:
+            for ticker in self.df.tic.unique():
+                sentiment_bonus += self.fetch_news_sentiment(ticker)
+        else:
+            sentiment_bonus = self.fetch_news_sentiment(self.df.tic)
         return sentiment_bonus
 
     def step(self, actions):
